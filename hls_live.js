@@ -23,13 +23,6 @@ const sum = ~~numMch.reduce((a, b) => {
 // 模拟主播开播时间
 const startTime = Date.now();
 
-(function mock() {
-  setInterval(() => {
-    const xml = renderXml();
-    console.log(xml);
-  }, 2000);
-})();
-
 // 模板头
 const template = `#EXTM3U
 #EXT-X-VERSION:3
