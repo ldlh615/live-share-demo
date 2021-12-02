@@ -23,6 +23,13 @@ const sum = ~~numMch.reduce((a, b) => {
 // 模拟主播开播时间
 const startTime = Date.now();
 
+(function mock() {
+  setInterval(() => {
+    const xml = renderXml();
+    console.log(xml);
+  }, 2000);
+})();
+
 // 模板头
 const template = `#EXTM3U
 #EXT-X-VERSION:3
@@ -32,28 +39,29 @@ const template = `#EXTM3U
 // 渲染完整模板
 function renderXml() {
   let xml = template;
-  const timeGap = (Date.now() - startTime) / 1000;
-  let idx;
-  if (timeGap < sum) {
-    idx = segs.findIndex((v) => {
-      return timeGap < v;
-    });
-  } else {
-    const r = timeGap % sum;
-    idx = segs.findIndex((v) => {
-      return timeGap < r;
-    });
-  }
-  xml += `#EXT-X-MEDIA-SEQUENCE:${Math.max(idx, 0)}\n`;
+  const totalGap = (Date.now() - startTime) / 1000;
+  const timeGap = totalGap >= sum ? totalGap % sum : totalGap;
+  const loopNum = Math.floor(totalGap / sum);
+  const idx = segs.findIndex((v) => {
+    return timeGap < v;
+  });
+  const seq = loopNum * 26 + idx || 0;
+
+  xml += `#EXT-X-MEDIA-SEQUENCE:${seq}\n`;
   for (let i = idx - 2; i <= idx + 2; i++) {
     console.log(i, mch[i]);
-    if (i >= 0 && i < mch.length) {
-      // xml += `#EXTINF:0\nlive_0${mch.length + i}.ts\n`;
+    if (i < 0) {
+      if (loopNum > 0) {
+        const j = mch.length + i;
+        xml += `${mch[j]}\nlive_0${j < 10 ? "0" + j : j}.ts\n`;
+      }
+    } else if (i > mch.length - 1) {
+      const j = i % mch.length;
+      xml += `${mch[j]}\nlive_0${j < 10 ? "0" + j : j}.ts\n`;
     } else {
       xml += `${mch[i]}\nlive_0${i < 10 ? "0" + i : i}.ts\n`;
     }
   }
-  console.log(timeGap, idx);
   return xml;
 }
 
