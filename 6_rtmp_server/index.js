@@ -7,13 +7,13 @@ const Handshake = require("./node_rtmp_handshake");
 
 const port = 1935;
 
-// 简单创建个server
+// 创建个server
 const server = Net.createServer((socket) => {
   const session = new Session(socket);
   session.run();
 });
 
-// 再简单处理每个socket session
+// 处理每个socket session
 class Session {
   constructor(socket) {
     this.socket = socket;
@@ -36,6 +36,7 @@ class Session {
     while (bytes > 0) {
       Logger("handshakeState", this.handshakeState, p, n);
       switch (this.handshakeState) {
+        // c0
         case 0: {
           this.handshakeState = 1;
           this.handshakeBytes = 0;
@@ -43,6 +44,7 @@ class Session {
           p += 1;
           break;
         }
+        // c1
         case 1: {
           n = 1536 - this.handshakeBytes;
           n = n <= bytes ? n : bytes;
@@ -58,6 +60,7 @@ class Session {
           }
           break;
         }
+        // c2
         case 2: {
           n = 1536 - this.handshakeBytes;
           n = n <= bytes ? n : bytes;
@@ -72,20 +75,19 @@ class Session {
           }
           break;
         }
+        // chunk
         case 3:
         default: {
-          this.socket.end()
+          this.socket.end();
         }
       }
     }
   }
 
-  rtmpChunkRead(data, p, bytes) {
-    
-  }
+  rtmpChunkRead(data, p, bytes) {}
 }
 
-// 最后简单监听一下
+// 启动服务监听一下端口
 server.listen(port, () => {
   console.log(`start on rtmp://localhost`);
   console.log(`run 'ffmpeg -re -i ~/Downloads/bangbang.mp4 -f flv rtmp://127.0.0.1'`);
