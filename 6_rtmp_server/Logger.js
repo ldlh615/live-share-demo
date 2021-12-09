@@ -6,5 +6,5 @@ const ws = fs.createWriteStream(logPath, { encoding: "utf-8" });
 
 module.exports = function log() {
   console.log(...arguments);
-  ws.write([...arguments].join(" ") + "\n");
+  ws.write([...arguments].join(" ").toString() + "\n");
 };
