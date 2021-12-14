@@ -126,18 +126,18 @@ function NMRtmpConn(id, socket, conns, producers) {
 
       /* ----- 开始解析块(Chunk) ----- */
       /*
-             # 发送端把RTMP Message划分为一个个Chunk，意味着Chunk就是传输过程数据的最小单位。
-               所以，解析RTMP Message，就是解析Chunk
+      # 发送端把RTMP Message划分为一个个Chunk，意味着Chunk就是传输过程数据的最小单位。
+        所以，解析RTMP Message，就是解析Chunk
 
-             # 下面给出了块(Chunk)的标准格式
-             +--------------+----------------+--------------------+---------------------------------------+
-             | Basic Header | Message Header | Extended Timestamp |                Chunk Data             |
-             +--------------+----------------+--------------------+---------------------------------------+
-             |<------------------- Chunk Header ----------------->|
+      # 下面给出了块(Chunk)的标准格式
+      +--------------+----------------+--------------------+---------------------------------------+
+      | Basic Header | Message Header | Extended Timestamp |                Chunk Data             |
+      +--------------+----------------+--------------------+---------------------------------------+
+      |<------------------- Chunk Header ----------------->|
 
-             # 可以看出，一个块(chunk)是由块头(Chunk Header)和块数据(Chunk Data)组成的
-             # 而块头(Chunk Header)则包含有 基本头(Basic Header)、消息头(Message Header)和拓展时间戳(Extended Timestamp)信息
-             */
+      # 可以看出，一个块(chunk)是由块头(Chunk Header)和块数据(Chunk Data)组成的
+      # 而块头(Chunk Header)则包含有 基本头(Basic Header)、消息头(Message Header)和拓展时间戳(Extended Timestamp)信息
+      */
 
       /* 解析 基本的头信息(Basic Header) */
       var chunkBasicHeader = self.bp.read(1);
