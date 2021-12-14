@@ -4,12 +4,12 @@ const port = 1234;
 
 const tcpServer = Net.createServer((socket) => {
   console.log("client connected");
-  socket.write("hello word");
+  socket.write("hello word\n");
   socket.end();
 });
 
 tcpServer.listen(port, () => {
-  console.log(`server start on localhost:${1234}, curl localhost:1234`);
+  console.log(`server start on localhost:${1234}, telnet localhost 1234`);
 });
 
 tcpServer.on("connection", (e) => {
