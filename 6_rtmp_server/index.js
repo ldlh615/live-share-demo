@@ -163,6 +163,35 @@ class Session {
     如果时间戳大于等于16777215 (16进制0xFFFFFF)，这个字段必须是16777215，意味着Extended Timestamp字段32bit的时间戳。
 
 
+    Type 1 chunk headers是7字节长。message stream ID不在其内。
+    这个chunk带有上个chunk相同的chunk stream id。
+    流都是变长的消息(举例，多种视频格式)应该用这个格式作为第二个stream的chunk报文。
+    0                   1                   2                   3
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ 
+    |                timestamp delta                |message length | 
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ 
+    |      message length (cont)    |message type id| 
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    Chunk Message Header - Type 1
+
+
+    Type 2chunk headers是3字节长。stream ID和message length都不包含；
+    chunk有与前一个chunk相同的stream ID和message length。
+    流是定长的消息(例如，音频和数据格式)应该用这个类型，作为第二个stream的chunk报文。
+    0                   1                   2
+    0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+ 
+    |                timestamp delta                | 
+    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+    Chunk Message Header - Type 2
+
+
+    Type 3其实没有message header。
+    stream ID，message length和timestamp都不存在。
+    这个chunk类型都继承前一个相同chunk stream ID的chunk所有字段。
+    当单个消息被切分多个chunk，所有的消息除了第一个chunk外都用这个类型。
+
     */
     switch (formatType) {
       case 0: {
@@ -178,6 +207,16 @@ class Session {
         break;
       }
     }
+
+    /* ----- 解析Extended Timestamp Header -----
+    extended timestamp字段用于timestamp字段大于等于16777215(0xFFFFFF)；
+    那是为了时间戳不能满足于在type0,1,2 chunk中24bits大小的字段。
+    这个字段是完整的32bit的时间戳或时间戳差值。
+    这个字段在chunk type 0中表示时间戳，或type-1或type-2 chunk中表示timestamp的差值，timestamp字段的值必须是16777215(0xFFFFFF)。
+    这个字段当先前使用的type 0, 1, 或2 chunk对同一个chunk stream ID, 表示type3该字段是上次extended timesamp field。
+    */
+
+    /* ----- 解析Chunk Data ----- */
 
     console.log(formatType, chunkStreamID);
 
