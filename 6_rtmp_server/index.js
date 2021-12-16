@@ -5,6 +5,25 @@ const Logger = require("./Logger");
 const Net = require("net");
 
 const port = 1935;
+const rtmpHeaderSize = [11, 7, 3, 0];
+const RtmpPacket = {
+  create: (fmt = 0, cid = 0) => {
+    return {
+      header: {
+        fmt: fmt,
+        cid: cid,
+        timestamp: 0,
+        length: 0,
+        type: 0,
+        stream_id: 0,
+      },
+      clock: 0,
+      payload: null,
+      capacity: 0,
+      bytes: 0,
+    };
+  },
+};
 
 // 创建个server
 const server = Net.createServer((socket) => {
@@ -20,6 +39,8 @@ class Session {
     this.previousChunk = {};
     this.inChunkSize = 128;
     this.outChunkSize = 128;
+    this.connectCmdObj = {};
+    this.objectEncoding = {};
   }
 
   // 绑定一下事件
@@ -290,18 +311,172 @@ class Session {
     this.handleRtmpMessage(message, chunkData);
   }
 
-  handleRtmpMessage(message, chunkData) {
+  handleRtmpMessage(message, rtmpBody) {
     const { timestamp, messageLength, messageTypeID, messageStreamID, timestampDelta } = message;
     switch (messageTypeID) {
+      // 20
+      case 0x14:
+        const cmd = AMF.decodeAmf0Cmd(rtmpBody);
+        Logger.log("cmd", cmd);
+        this.handleAMFCommandMessage(cmd);
+        break;
     }
   }
 
-  handleAMFDataMessage(cmdData) {
-    switch (cmdData.cmd) {
+  handleAMFCommandMessage(cmd) {
+    switch (cmd.cmd) {
       case "connect": {
+        this.connectCmdObj = cmd.cmdObj;
+        this.objectEncoding = cmd.cmdObj.objectEncoding != null ? cmd.cmdObj.objectEncoding : 0;
+        this.sendWindowACK(5000000);
+        this.setPeerBandwidth(5000000, 2);
+        this.outChunkSize = 4096;
+        this.setChunkSize(this.outChunkSize);
+        this.respondConnect();
+        Logger.log("connect");
         break;
       }
     }
+  }
+
+  sendWindowACK(size) {
+    let rtmpBuffer = Buffer.from("02000000000004050000000000000000", "hex");
+    rtmpBuffer.writeUInt32BE(size, 12);
+    this.socket.write(rtmpBuffer);
+  }
+
+  setPeerBandwidth(size, type) {
+    let rtmpBuffer = Buffer.from("0200000000000506000000000000000000", "hex");
+    rtmpBuffer.writeUInt32BE(size, 12);
+    rtmpBuffer[16] = type;
+    this.socket.write(rtmpBuffer);
+  }
+
+  setChunkSize(size) {
+    let rtmpBuffer = Buffer.from("02000000000004010000000000000000", "hex");
+    rtmpBuffer.writeUInt32BE(size, 12);
+    this.socket.write(rtmpBuffer);
+  }
+
+  respondConnect(tid) {
+    let opt = {
+      cmd: "_result",
+      transId: tid,
+      cmdObj: {
+        fmsVer: "FMS/3,0,1,123",
+        capabilities: 31,
+      },
+      info: {
+        level: "status",
+        code: "NetConnection.Connect.Success",
+        description: "Connection succeeded.",
+        objectEncoding: this.objectEncoding,
+      },
+    };
+    this.sendInvokeMessage(0, opt);
+  }
+
+  sendInvokeMessage(sid, opt) {
+    let packet = RtmpPacket.create();
+    packet.header.fmt = 0;
+    packet.header.cid = 4;
+    packet.header.type = 20;
+    packet.header.stream_id = sid;
+    packet.payload = AMF.encodeAmf0Cmd(opt);
+    packet.header.length = packet.payload.length;
+    let chunks = this.rtmpChunksCreate(packet);
+    this.socket.write(chunks);
+  }
+
+  rtmpChunksCreate(packet) {
+    let header = packet.header;
+    let payload = packet.payload;
+    let payloadSize = header.length;
+    let chunkSize = this.outChunkSize;
+    let chunksOffset = 0;
+    let payloadOffset = 0;
+    let chunkBasicHeader = this.rtmpChunkBasicHeaderCreate(header.fmt, header.cid);
+    let chunkBasicHeader3 = this.rtmpChunkBasicHeaderCreate(3, header.cid);
+    let chunkMessageHeader = this.rtmpChunkMessageHeaderCreate(header);
+    let useExtendedTimestamp = header.timestamp >= 0xffffff;
+    let headerSize = chunkBasicHeader.length + chunkMessageHeader.length + (useExtendedTimestamp ? 4 : 0);
+    let n = headerSize + payloadSize + Math.floor(payloadSize / chunkSize);
+
+    if (useExtendedTimestamp) {
+      n += Math.floor(payloadSize / chunkSize) * 4;
+    }
+    if (!(payloadSize % chunkSize)) {
+      n -= 1;
+      if (useExtendedTimestamp) {
+        //TODO CHECK
+        n -= 4;
+      }
+    }
+
+    let chunks = Buffer.alloc(n);
+    chunkBasicHeader.copy(chunks, chunksOffset);
+    chunksOffset += chunkBasicHeader.length;
+    chunkMessageHeader.copy(chunks, chunksOffset);
+    chunksOffset += chunkMessageHeader.length;
+    if (useExtendedTimestamp) {
+      chunks.writeUInt32BE(header.timestamp, chunksOffset);
+      chunksOffset += 4;
+    }
+    while (payloadSize > 0) {
+      if (payloadSize > chunkSize) {
+        payload.copy(chunks, chunksOffset, payloadOffset, payloadOffset + chunkSize);
+        payloadSize -= chunkSize;
+        chunksOffset += chunkSize;
+        payloadOffset += chunkSize;
+        chunkBasicHeader3.copy(chunks, chunksOffset);
+        chunksOffset += chunkBasicHeader3.length;
+        if (useExtendedTimestamp) {
+          chunks.writeUInt32BE(header.timestamp, chunksOffset);
+          chunksOffset += 4;
+        }
+      } else {
+        payload.copy(chunks, chunksOffset, payloadOffset, payloadOffset + payloadSize);
+        payloadSize -= payloadSize;
+        chunksOffset += payloadSize;
+        payloadOffset += payloadSize;
+      }
+    }
+    return chunks;
+  }
+
+  rtmpChunkBasicHeaderCreate(fmt, cid) {
+    let out;
+    if (cid >= 64 + 255) {
+      out = Buffer.alloc(3);
+      out[0] = (fmt << 6) | 1;
+      out[1] = (cid - 64) & 0xff;
+      out[2] = ((cid - 64) >> 8) & 0xff;
+    } else if (cid >= 64) {
+      out = Buffer.alloc(2);
+      out[0] = (fmt << 6) | 0;
+      out[1] = (cid - 64) & 0xff;
+    } else {
+      out = Buffer.alloc(1);
+      out[0] = (fmt << 6) | cid;
+    }
+    return out;
+  }
+
+  rtmpChunkMessageHeaderCreate(header) {
+    let out = Buffer.alloc(rtmpHeaderSize[header.fmt % 4]);
+    if (header.fmt <= 2) {
+      out.writeUIntBE(header.timestamp >= 0xffffff ? 0xffffff : header.timestamp, 0, 3);
+    }
+
+    if (header.fmt <= 1) {
+      out.writeUIntBE(header.length, 3, 3);
+      out.writeUInt8(header.type, 6);
+    }
+
+    if (header.fmt === 0) {
+      out.writeUInt32LE(header.stream_id, 7);
+    }
+    return out;
   }
 }
 
