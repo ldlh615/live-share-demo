@@ -25,7 +25,7 @@ class Session {
 
   // 处理data
   onData(data) {
-    console.log("ondata", data.length);
+    Logger.log("onData", data.length, data.slice(0, 100));
     /* ----- 开始握手 ----- 
     RTMP协议的实现者需要保证这几点：
     - 客户端要等收到S1之后才能发送C2
@@ -55,10 +55,8 @@ class Session {
         if (data.length === 1536) {
           break;
         }
-        const length = data.length > 1536 ? data.length - 1536 : data.length;
         const offset = data.length > 1536 ? 1536 : 0;
-        const cData = Buffer.alloc(length, 0);
-        data.copy(cData, 0, offset);
+        const cData = data.slice(offset);
         this.rtmpChunkRead(cData);
         break;
       }
@@ -92,8 +90,7 @@ class Session {
   |<------------------- Chunk Header ----------------->|
   */
   rtmpChunkRead(data) {
-    console.log("chunkread", data.length, data[0].toString(2), data[0] & 0x3f);
-
+    Logger.log("rtmpChunkRead", data.length, data.slice(0, 100));
     /* ----- 解析 Basic Header -----
     Basic Header 由chunk type和chunk stream id组成, 也就是fmt(块类型)和csid(块id)
     Basic Header字段长度可以是1，2或3字节
@@ -121,22 +118,25 @@ class Session {
     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
     Chunk basic header 3
     */
-    const chunkBasicHeader = data[0]; // 一个字节=8bit = 上面的任意一种
+    const chunkBasicHeader = data.slice(0, 1); // 一个字节=8bit = 上面的任意一种
     const formatType = chunkBasicHeader[0] >> 6; // 右位移6位取前2位
     let chunkStreamID = chunkBasicHeader[0] & 0x3f; // 0x3f=0b111111,且操作,取后六位
-    let parserBytes = 1; // 预设值,因为还有可能是3字节
+    Logger.log("chunkBasicHeader", chunkBasicHeader);
+    Logger.log("formatType", formatType);
+    Logger.log("chunkStreamID", chunkStreamID);
+    let parserBytesOffset = 1; // 预设值,因为还有可能是3字节
     // 根据上面header结构,重新新取值
     switch (chunkStreamID) {
       // 0b000000 & 0b111111 = 0, 所以是情况2: Basic Header占用2个字节，CSID在［64，319］之间
       case 0: {
         chunkStreamID = data[1] + 64;
-        parserBytes = 2;
+        parserBytesOffset = 2;
         break;
       }
       // 0b000001 & 0b111111 = 1, 所以是情况3: Basic Header占用3个字节，CSID在［64，65599］之间
       case 1: {
         chunkStreamID = (data[1] << 8) + data[2] + 64;
-        parserBytes = 3;
+        parserBytesOffset = 3;
         break;
       }
       // 剩下就是情况1, 该chunk是控制信息和一些命令信息
@@ -195,6 +195,13 @@ class Session {
     */
     switch (formatType) {
       case 0: {
+        const chunkMessageHeader = data.slice(parserBytesOffset);
+        const timestamp = chunkMessageHeader.readIntBE(0, 3);
+        const messageLength = chunkMessageHeader.readIntBE(3, 3);
+        const messageTypeID = chunkMessageHeader[6];
+        const messageStreamID = chunkMessageHeader.readInt32LE(7);
+        parserBytesOffset += 11;
+        console.log(timestamp, messageLength, messageTypeID, messageStreamID);
         break;
       }
       case 1: {
@@ -218,8 +225,6 @@ class Session {
 
     /* ----- 解析Chunk Data ----- */
 
-    console.log(formatType, chunkStreamID);
-
     this.socket.end();
   }
 
@@ -234,7 +239,6 @@ class Session {
   windowACK(size) {
     const rtmpBuffer = Buffer.from("02000000000004050000000000000000", "hex");
     rtmpBuffer.writeUInt32BE(size, 12);
-    // //console.log('windowACK: '+rtmpBuffer.hex());
     this.socket.write(rtmpBuffer);
   }
 
@@ -242,14 +246,12 @@ class Session {
     const rtmpBuffer = Buffer.from("0200000000000506000000000000000000", "hex");
     rtmpBuffer.writeUInt32BE(size, 12);
     rtmpBuffer[16] = type;
-    // //console.log('setPeerBandwidth: '+rtmpBuffer.hex());
     this.socket.write(rtmpBuffer);
   }
 
   setChunkSize(size) {
     const rtmpBuffer = Buffer.from("02000000000004010000000000000000", "hex");
     rtmpBuffer.writeUInt32BE(size, 12);
-    // //console.log('setChunkSize: '+rtmpBuffer.hex());
     this.socket.write(rtmpBuffer);
   }
 
@@ -261,10 +263,9 @@ class Session {
 
 // 启动服务监听一下端口
 server.listen(port, () => {
-  // console.clear();
+  console.clear();
   console.log(`start on rtmp://localhost`);
   console.log(`run 'ffmpeg -re -i ~/Downloads/bangbang.mp4 -f flv rtmp://127.0.0.1/live/aaa'`);
-  console.log("---------------------------------------------");
 });
 
 server.on("error", (e) => {
@@ -274,7 +275,3 @@ server.on("error", (e) => {
 server.on("close", () => {
   console.log("Node Media Rtmp Server Close.");
 });
-
-const b = Buffer.from([0x01, 0x02]);
-console.log(b[0] * 256 + b[1]);
-console.log((b[0] << 8) + b[1]);
