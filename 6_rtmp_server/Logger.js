@@ -10,14 +10,17 @@ function log() {
   const s = [...arguments];
   for (let i = 0; i < s.length; i++) {
     const v = s[i];
-    if (isBuffer(v)) {
+    if (Buffer.isBuffer(v)) {
       let j = 0;
-      let str = "";
+      let str = "[";
       while (j < v.length) {
-        str += v[j];
+        str += v[j].toString(16) + " ";
         j++;
       }
+      str += "]";
       s[i] = str;
+    } else if (Object.prototype.toString.call(v) === "[object Object]") {
+      s[i] = JSON.stringify(v);
     }
   }
   ws.write(s.join(" ").toString() + "\n");

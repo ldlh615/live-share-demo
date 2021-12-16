@@ -1,5 +1,6 @@
 // Message > Chunk
 
+const AMF = require("./node_core_amf");
 const Logger = require("./Logger");
 const Net = require("net");
 
@@ -16,6 +17,9 @@ class Session {
   constructor(socket) {
     this.socket = socket;
     this.handshakeState = 0; // 握手状态
+    this.previousChunk = {};
+    this.inChunkSize = 128;
+    this.outChunkSize = 128;
   }
 
   // 绑定一下事件
@@ -25,7 +29,7 @@ class Session {
 
   // 处理data
   onData(data) {
-    Logger.log("onData", data.length, data.slice(0, 100));
+    Logger.log("onData", data.length);
     /* ----- 开始握手 ----- 
     RTMP协议的实现者需要保证这几点：
     - 客户端要等收到S1之后才能发送C2
@@ -90,7 +94,7 @@ class Session {
   |<------------------- Chunk Header ----------------->|
   */
   rtmpChunkRead(data) {
-    Logger.log("rtmpChunkRead", data.length, data.slice(0, 100));
+    Logger.log("rtmpChunkRead", data.length);
     /* ----- 解析 Basic Header -----
     Basic Header 由chunk type和chunk stream id组成, 也就是fmt(块类型)和csid(块id)
     Basic Header字段长度可以是1，2或3字节
@@ -145,6 +149,8 @@ class Session {
       // }
     }
 
+    Logger.log("parserBytesOffset", parserBytesOffset);
+
     /* ----- 解析Message Header -----
     格式和长度取决于Basic Header的chunk type，共有4种不同的格式
 
@@ -193,27 +199,57 @@ class Session {
     当单个消息被切分多个chunk，所有的消息除了第一个chunk外都用这个类型。
 
     */
+    // 消息头
+    const message = {
+      timestamp: 0,
+      messageLength: 0,
+      messageTypeID: 0,
+      messageStreamID: 0,
+      timestampDelta: 0,
+    };
     switch (formatType) {
       case 0: {
         const chunkMessageHeader = data.slice(parserBytesOffset);
-        const timestamp = chunkMessageHeader.readIntBE(0, 3);
-        const messageLength = chunkMessageHeader.readIntBE(3, 3);
-        const messageTypeID = chunkMessageHeader[6];
-        const messageStreamID = chunkMessageHeader.readInt32LE(7);
+        message.timestamp = chunkMessageHeader.readIntBE(0, 3);
+        message.messageLength = chunkMessageHeader.readIntBE(3, 3);
+        message.messageTypeID = chunkMessageHeader[6];
+        message.messageStreamID = chunkMessageHeader.readInt32LE(7);
+        this.previousChunk[chunkStreamID] = message;
         parserBytesOffset += 11;
-        console.log(timestamp, messageLength, messageTypeID, messageStreamID);
         break;
       }
       case 1: {
+        const chunkMessageHeader = data.slice(parserBytesOffset);
+        message.timestampDelta = chunkMessageHeader.readIntBE(0, 3);
+        message.timestamp = this.previousChunk[chunkStreamID].timestamp;
+        message.messageLength = chunkMessageHeader.readIntBE(3, 3);
+        message.messageTypeID = chunkMessageHeader[6];
+        message.messageStreamID = this.previousChunk[chunkStreamID].messageStreamID;
+        this.previousChunk[chunkStreamID] = message;
+        parserBytesOffset += 7;
         break;
       }
       case 2: {
+        const chunkMessageHeader = data.slice(parserBytesOffset);
+        message.timestampDelta = chunkMessageHeader.readIntBE(0, 3);
+        message.timestamp = this.previousChunk[chunkStreamID].timestamp;
+        message.messageLength = this.previousChunk[chunkStreamID].messageLength;
+        message.messageTypeID = this.previousChunk[chunkStreamID].messageTypeID;
+        message.messageStreamID = this.previousChunk[chunkStreamID].messageStreamID;
+        this.previousChunk[chunkStreamID] = message;
+        parserBytesOffset += 7;
         break;
       }
+      // 剩下3继承前一个相同chunk stream ID的chunk所有字段
       case 3: {
+        message = { ...this.previousChunk[chunkStreamID] };
+        this.previousChunk[chunkStreamID] = message;
         break;
       }
     }
+
+    Logger.log("message", message);
+    Logger.log("parserBytesOffset", parserBytesOffset);
 
     /* ----- 解析Extended Timestamp Header -----
     extended timestamp字段用于timestamp字段大于等于16777215(0xFFFFFF)；
@@ -222,42 +258,50 @@ class Session {
     这个字段在chunk type 0中表示时间戳，或type-1或type-2 chunk中表示timestamp的差值，timestamp字段的值必须是16777215(0xFFFFFF)。
     这个字段当先前使用的type 0, 1, 或2 chunk对同一个chunk stream ID, 表示type3该字段是上次extended timesamp field。
     */
+    if (formatType === 0) {
+      if (message.timestamp === 0xffffff) {
+        const chunkExtendedTimestampHeader = data.slice(parserBytesOffset);
+        message.timestamp =
+          chunkExtendedTimestampHeader[0] * Math.pow(256, 3) +
+          (chunkExtendedTimestampHeader[1] << 16) +
+          (chunkExtendedTimestampHeader[2] << 8) +
+          chunkExtendedTimestampHeader[3];
+        parserBytesOffset += 4;
+      }
+    } else if (message.timestampDelta === 0xffffff) {
+      const chunkExtendedTimestampHeader = data.slice(parserBytesOffset);
+      message.timestampDelta =
+        chunkExtendedTimestampHeader[0] * Math.pow(256, 3) +
+        (chunkExtendedTimestampHeader[1] << 16) +
+        (chunkExtendedTimestampHeader[2] << 8) +
+        chunkExtendedTimestampHeader[3];
+      parserBytesOffset += 4;
+    }
 
-    /* ----- 解析Chunk Data ----- */
+    Logger.log("parserBytesOffset", parserBytesOffset);
 
-    this.socket.end();
+    /* ----- 解析Chunk Data ----- 
+    这部分数据是用户实际要传的，与RTMP协议本身无关
+    长度在(0,chunkSize)之间
+    */
+    const chunkData = data.slice(parserBytesOffset);
+    Logger.log(parserBytesOffset, data, chunkData);
+
+    this.handleRtmpMessage(message, chunkData);
   }
 
-  createRtmpMessage() {}
-
-  handleRtmpMessage() {}
-
-  handleAMFDataMessage() {}
-
-  handleAMFCommandMessage() {}
-
-  windowACK(size) {
-    const rtmpBuffer = Buffer.from("02000000000004050000000000000000", "hex");
-    rtmpBuffer.writeUInt32BE(size, 12);
-    this.socket.write(rtmpBuffer);
+  handleRtmpMessage(message, chunkData) {
+    const { timestamp, messageLength, messageTypeID, messageStreamID, timestampDelta } = message;
+    switch (messageTypeID) {
+    }
   }
 
-  setPeerBandwidth(size, type) {
-    const rtmpBuffer = Buffer.from("0200000000000506000000000000000000", "hex");
-    rtmpBuffer.writeUInt32BE(size, 12);
-    rtmpBuffer[16] = type;
-    this.socket.write(rtmpBuffer);
-  }
-
-  setChunkSize(size) {
-    const rtmpBuffer = Buffer.from("02000000000004010000000000000000", "hex");
-    rtmpBuffer.writeUInt32BE(size, 12);
-    this.socket.write(rtmpBuffer);
-  }
-
-  sendStreamEOF() {
-    const rtmpBuffer = Buffer.from("020000000000060400000000000100000001", "hex");
-    this.socket.write(rtmpBuffer);
+  handleAMFDataMessage(cmdData) {
+    switch (cmdData.cmd) {
+      case "connect": {
+        break;
+      }
+    }
   }
 }
 
