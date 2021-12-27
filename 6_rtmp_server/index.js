@@ -1,5 +1,3 @@
-// Message > Chunk
-
 const AMF = require("./node_core_amf");
 const Logger = require("./Logger");
 const Net = require("net");

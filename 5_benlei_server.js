@@ -25,7 +25,7 @@ const tcpServer = Net.createServer((socket) => {
     switch (type) {
       // ping一下
       case "PING": {
-        socket.write(`BENLEI/1.0 ANS\n\nhi iam Benlei\n`);
+        socket.write(`BENLEI/1.0 ANS\n\nHi iam Benlei\n`);
         socket.end();
         break;
       }
@@ -42,7 +42,7 @@ const tcpServer = Net.createServer((socket) => {
         for (let s of Object.values(socketMap)) {
           s.write(`BENLEI/1.0 ANS\n\n${body[0]}\n`);
         }
-        socket.write(`BENLEI/1.0 ANS\n\njoin success\n`);
+        socket.write(`BENLEI/1.0 ANS\n\nboardcast success\n`);
         break;
       }
       default: {
