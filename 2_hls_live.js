@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 
 const resolve = (p) => path.resolve(__dirname, p);
-const tpl = fs.readFileSync(resolve("./source/live.m3u8"), { encoding: "utf-8" });
+const tpl = fs.readFileSync(resolve("./source/play.m3u8"), { encoding: "utf-8" });
 const mch = tpl.match(/#EXTINF:[\d.]+/g);
 const numMch = mch.map((v) => {
   return +v.replace("#EXTINF:", "");
@@ -20,13 +20,19 @@ const sum = ~~numMch.reduce((a, b) => {
   return a + b;
 });
 
+console.log(mch);
+console.log(numMch);
+console.log(segs);
+console.log(sum);
+
 // 模拟主播开播时间
 const startTime = Date.now();
 
 // 模板头
 const template = `#EXTM3U
 #EXT-X-VERSION:3
-#EXT-X-TARGETDURATION:17
+#EXT-X-ALLOW-CACHE:YES
+#EXT-X-TARGETDURATION:9
 `;
 
 // 渲染完整模板
@@ -36,23 +42,23 @@ function renderXml() {
   const timeGap = totalGap >= sum ? totalGap % sum : totalGap;
   const loopNum = Math.floor(totalGap / sum);
   const idx = segs.findIndex((v) => {
-    return timeGap < v;
+    return timeGap <= v;
   });
-  const seq = loopNum * 26 + idx || 0;
+  const seq = loopNum * 31 + idx || 0;
+  console.log(totalGap, timeGap, loopNum, idx);
 
   xml += `#EXT-X-MEDIA-SEQUENCE:${seq}\n`;
   for (let i = idx - 2; i <= idx + 2; i++) {
-    console.log(i, mch[i]);
     if (i < 0) {
       if (loopNum > 0) {
         const j = mch.length + i;
-        xml += `${mch[j]}\nlive_0${j < 10 ? "0" + j : j}.ts\n`;
+        xml += `${mch[j]}\nlive_${j}.ts\n`;
       }
-    } else if (i > mch.length - 1) {
+    } else if (i >= mch.length - 1) {
       const j = i % mch.length;
-      xml += `${mch[j]}\nlive_0${j < 10 ? "0" + j : j}.ts\n`;
+      xml += `${mch[j]}\nlive_${j}.ts\n`;
     } else {
-      xml += `${mch[i]}\nlive_0${i < 10 ? "0" + i : i}.ts\n`;
+      xml += `${mch[i]}\nlive_${i}.ts\n`;
     }
   }
   return xml;
