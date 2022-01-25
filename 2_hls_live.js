@@ -1,65 +1,69 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const { format } = require("util");
 
 const resolve = (p) => path.resolve(__dirname, p);
-const tpl = fs.readFileSync(resolve("./source/play.m3u8"), { encoding: "utf-8" });
-const mch = tpl.match(/#EXTINF:[\d.]+/g);
-const numMch = mch.map((v) => {
-  return +v.replace("#EXTINF:", "");
+const m3u8Template = fs.readFileSync(resolve("./source/play.m3u8"), { encoding: "utf-8" });
+const fileDuration = m3u8Template.match(/#EXTINF:([\d\.]+),\s*\n(live_[\d]+\.ts)/g).map((v) => {
+  const [duration] = v.split(/[,\r\n]+/);
+  return {
+    duration: +duration.replace("#EXTINF:", ""),
+    tag: v,
+  };
 });
-const segs = numMch.reduce((a, b) => {
-  if (Array.isArray(a)) {
-    return [...a, a[a.length - 1] + b];
-  }
-  return [a, a + b];
-});
+const playListNum = 10;
 
 // 总秒数
-const sum = ~~numMch.reduce((a, b) => {
-  return a + b;
+const totalDuration = fileDuration.reduce((a, b) => {
+  if (typeof a === "number") {
+    return a + b.duration;
+  }
+  return a.duration + b.duration;
 });
 
-console.log(mch);
-console.log(numMch);
-console.log(segs);
-console.log(sum);
-
 // 模拟主播开播时间
-let startTime = Date.now();
+const startTime = Date.now() - 1000 * 0;
 
 // 模板头
 const template = `#EXTM3U
 #EXT-X-VERSION:3
-#EXT-X-TARGETDURATION:10
+#EXT-X-MEDIA-SEQUENCE:%d
+#EXT-X-TARGETDURATION:9
 `;
 
 // 渲染完整模板
 function renderXml() {
   let xml = template;
-  const totalGap = (Date.now() - startTime) / 1000;
-  const timeGap = totalGap >= sum ? totalGap % sum : totalGap;
-  const loopNum = Math.floor(totalGap / sum);
-  const idx = segs.findIndex((v) => {
-    return timeGap <= v;
-  });
-  const seq = loopNum * 12 + idx || 0;
-  // console.log(totalGap, timeGap, loopNum, idx);
+  const delta = (Date.now() - startTime) / 1000; // 时间差
+  const loops = Math.floor(delta / totalDuration); // 循环次数
+  let deltaInLoop = delta - totalDuration * loops; // 相对循环时间差
+  let sequenceInLoop = loops * fileDuration.length; // 下标
+  let tags = [];
 
-  xml += `#EXT-X-MEDIA-SEQUENCE:${seq}\n`;
-  for (let i = idx - 2; i <= idx + 2; i++) {
-    if (i < 0) {
-      if (loopNum > 0) {
-        const j = mch.length + i;
-        xml += `${mch[j]}\nlive_${j}.ts?t=${Date.now()}\n`;
-      }
-    } else if (i > mch.length - 1) {
-      const j = i % mch.length;
-      xml += `${mch[j]}\nlive_${j}.ts?t=${Date.now()}\n`;
+  for (let i = 0; i < fileDuration.length; i++) {
+    const o = fileDuration[i];
+    deltaInLoop -= o.duration;
+    if (deltaInLoop > 0) {
+      sequenceInLoop += 1;
+    } else if (tags.length < playListNum) {
+      tags.push(o.tag);
     } else {
-      xml += `${mch[i]}\nlive_${i}.ts?t=${Date.now()}\n`;
+      break;
     }
   }
+
+  if (tags.length < playListNum) {
+    tags = tags.concat(fileDuration.slice(0, playListNum - tags.length).map((v) => v.tag));
+  }
+
+  // console.log(fileDuration);
+  // console.log(totalDuration);
+  // console.log(tags);
+  // console.log(totalDuration, delta, loops, loopSequence, deltaInLoop);
+
+  xml = format(xml, sequenceInLoop);
+  xml += tags.join("\n");
   return xml;
 }
 
@@ -71,24 +75,25 @@ const server = http.createServer((req, res) => {
 
   if (isM3u8) {
     const m3u8Xml = renderXml();
-    // const contentBuf = Buffer.from(template);
+    const contentBuf = Buffer.from(m3u8Xml);
     res.setHeader("Content-Type", "application/vnd.apple.mpegurl");
-    // res.setHeader("Accept-Ranges", "bytes");
-    // res.setHeader("Content-Length", contentBuf.length);
-    // res.setHeader("Content-Range", `bytes ${contentBuf.length - 1}/${contentBuf.length}`);
-    res.setHeader("Access-Control-Allow-Origin", "*"); // 设置允许来自哪里的跨域请求访问（req.headers.origin为当前访问来源的域名与端口）
-    res.setHeader("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS"); // 设置允许接收的请求类型
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Content-Length", contentBuf.length);
+    res.setHeader("Content-Range", `bytes ${contentBuf.length - 1}/${contentBuf.length}`);
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type,request-origin");
     res.writeHead(200);
     res.write(m3u8Xml);
     res.end();
+    console.log(m3u8Xml);
   } else if (isTs) {
     const str = url.split("?t=")[0];
     const filePath = resolve("./source/" + str);
-    // res.setHeader("Content-Type", "video/mpeg");
-    // res.setHeader("Accept-Ranges", "bytes");
-    res.setHeader("Access-Control-Allow-Origin", "*"); // 设置允许来自哪里的跨域请求访问（req.headers.origin为当前访问来源的域名与端口）
-    res.setHeader("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS"); // 设置允许接收的请求类型
+    res.setHeader("Content-Type", "video/mpeg");
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type,request-origin");
     const rs = fs.createReadStream(filePath);
     rs.pipe(res);
@@ -99,6 +104,9 @@ const server = http.createServer((req, res) => {
 
 server.listen(1234, "0.0.0.0", () => {
   console.log("http://127.0.0.1:1234/live.m3u8");
-  // startTime -= 1000 * 100;
-  // console.log(renderXml());
+
+  // setInterval(() => {
+  //   renderXml();
+  // }, 1000);
+  // renderXml();
 });
