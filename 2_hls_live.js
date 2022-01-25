@@ -26,13 +26,12 @@ console.log(segs);
 console.log(sum);
 
 // 模拟主播开播时间
-const startTime = Date.now();
+let startTime = Date.now();
 
 // 模板头
 const template = `#EXTM3U
 #EXT-X-VERSION:3
-#EXT-X-ALLOW-CACHE:YES
-#EXT-X-TARGETDURATION:9
+#EXT-X-TARGETDURATION:10
 `;
 
 // 渲染完整模板
@@ -44,21 +43,21 @@ function renderXml() {
   const idx = segs.findIndex((v) => {
     return timeGap <= v;
   });
-  const seq = loopNum * 31 + idx || 0;
-  console.log(totalGap, timeGap, loopNum, idx);
+  const seq = loopNum * 12 + idx || 0;
+  // console.log(totalGap, timeGap, loopNum, idx);
 
   xml += `#EXT-X-MEDIA-SEQUENCE:${seq}\n`;
   for (let i = idx - 2; i <= idx + 2; i++) {
     if (i < 0) {
       if (loopNum > 0) {
         const j = mch.length + i;
-        xml += `${mch[j]}\nlive_${j}.ts\n`;
+        xml += `${mch[j]}\nlive_${j}.ts?t=${Date.now()}\n`;
       }
-    } else if (i >= mch.length - 1) {
+    } else if (i > mch.length - 1) {
       const j = i % mch.length;
-      xml += `${mch[j]}\nlive_${j}.ts\n`;
+      xml += `${mch[j]}\nlive_${j}.ts?t=${Date.now()}\n`;
     } else {
-      xml += `${mch[i]}\nlive_${i}.ts\n`;
+      xml += `${mch[i]}\nlive_${i}.ts?t=${Date.now()}\n`;
     }
   }
   return xml;
@@ -77,6 +76,9 @@ const server = http.createServer((req, res) => {
     // res.setHeader("Accept-Ranges", "bytes");
     // res.setHeader("Content-Length", contentBuf.length);
     // res.setHeader("Content-Range", `bytes ${contentBuf.length - 1}/${contentBuf.length}`);
+    res.setHeader("Access-Control-Allow-Origin", "*"); // 设置允许来自哪里的跨域请求访问（req.headers.origin为当前访问来源的域名与端口）
+    res.setHeader("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS"); // 设置允许接收的请求类型
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type,request-origin");
     res.writeHead(200);
     res.write(m3u8Xml);
     res.end();
@@ -85,6 +87,9 @@ const server = http.createServer((req, res) => {
     const filePath = resolve("./source/" + str);
     // res.setHeader("Content-Type", "video/mpeg");
     // res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Access-Control-Allow-Origin", "*"); // 设置允许来自哪里的跨域请求访问（req.headers.origin为当前访问来源的域名与端口）
+    res.setHeader("Access-Control-Allow-Methods", "GET,PUT,POST,DELETE,OPTIONS"); // 设置允许接收的请求类型
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type,request-origin");
     const rs = fs.createReadStream(filePath);
     rs.pipe(res);
   } else {
@@ -94,4 +99,6 @@ const server = http.createServer((req, res) => {
 
 server.listen(1234, "0.0.0.0", () => {
   console.log("http://127.0.0.1:1234/live.m3u8");
+  // startTime -= 1000 * 100;
+  // console.log(renderXml());
 });

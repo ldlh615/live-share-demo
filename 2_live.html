@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <script src="https://cdn.bootcdn.net/ajax/libs/video.js/7.18.0/video.min.js"></script>
+    <link href="https://cdn.bootcdn.net/ajax/libs/video.js/7.18.0/video-js.min.css" rel="stylesheet" />
+  </head>
+  <body>
+    <video id="video" class="video-js vjs-default-skin" controls preload="none" autoplay width="640" height="400">
+      <source src="http://127.0.0.1:1234/live.m3u8" type="application/x-mpegURL" />
+    </video>
+    <script>
+      var player = videojs("video", { controls: "true" });
+    </script>
+  </body>
+</html>
