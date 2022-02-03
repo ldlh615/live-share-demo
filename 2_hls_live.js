@@ -12,7 +12,7 @@ const fileDuration = m3u8Template.match(/#EXTINF:([\d\.]+),\s*\n(live_[\d]+\.ts)
     tag: v,
   };
 });
-const playListNum = 10;
+const playListNum = 3;
 
 // 总秒数
 const totalDuration = fileDuration.reduce((a, b) => {
@@ -44,6 +44,7 @@ function renderXml() {
   for (let i = 0; i < fileDuration.length; i++) {
     const o = fileDuration[i];
     deltaInLoop -= o.duration;
+    console.log("deltaInLoop", deltaInLoop);
     if (deltaInLoop > 0) {
       sequenceInLoop += 1;
     } else if (tags.length < playListNum) {
