@@ -10,6 +10,7 @@ const fileDuration = m3u8Template.match(/#EXTINF:([\d\.]+),\s*\n(live_[\d]+\.ts)
   return {
     duration: +duration.replace("#EXTINF:", ""),
     tag: v,
+    fileName,
   };
 });
 const playListNum = 3;
@@ -44,7 +45,6 @@ function renderXml() {
   for (let i = 0; i < fileDuration.length; i++) {
     const o = fileDuration[i];
     deltaInLoop -= o.duration;
-    console.log("deltaInLoop", deltaInLoop);
     if (deltaInLoop > 0) {
       sequenceInLoop += 1;
     } else if (tags.length < playListNum) {
@@ -57,11 +57,6 @@ function renderXml() {
   if (tags.length < playListNum) {
     tags = tags.concat(fileDuration.slice(0, playListNum - tags.length).map((v) => v.tag));
   }
-
-  // console.log(fileDuration);
-  // console.log(totalDuration);
-  // console.log(tags);
-  // console.log(totalDuration, delta, loops, loopSequence, deltaInLoop);
 
   xml = format(xml, sequenceInLoop);
   xml += tags.join("\n");
@@ -87,7 +82,6 @@ const server = http.createServer((req, res) => {
     res.writeHead(200);
     res.write(m3u8Xml);
     res.end();
-    console.log(m3u8Xml);
   } else if (isTs) {
     const str = url.split("?t=")[0];
     const filePath = resolve("./source/" + str);
@@ -105,9 +99,4 @@ const server = http.createServer((req, res) => {
 
 server.listen(1234, "0.0.0.0", () => {
   console.log("http://127.0.0.1:1234/live.m3u8");
-
-  // setInterval(() => {
-  //   renderXml();
-  // }, 1000);
-  // renderXml();
 });
