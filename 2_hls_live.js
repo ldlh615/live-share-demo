@@ -10,7 +10,6 @@ const fileDuration = m3u8Template.match(/#EXTINF:([\d\.]+),\s*\n(live_[\d]+\.ts)
   return {
     duration: +duration.replace("#EXTINF:", ""),
     tag: v,
-    fileName,
   };
 });
 const playListNum = 3;
