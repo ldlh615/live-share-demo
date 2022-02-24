@@ -309,9 +309,26 @@ class Session {
     this.handleRtmpMessage(message, chunkData);
   }
 
+  /* ----- 处理RtmpMessage ----- 
+  设置块类型 (1)
+  终止消息（2）
+  确认 (3)
+  用户控制消息 (4)
+  窗口确认大小 (5)
+  设置对端带宽 (6)
+  音频消息 (8)
+  视频消息 (9)
+  数据消息 (18, 15)
+  共享对象消息 (19, 16)
+  命令消息 (20, 17)
+  统计消息 (22)
+  */
   handleRtmpMessage(message, rtmpBody) {
+    console.log(message, rtmpBody);
     const { timestamp, messageLength, messageTypeID, messageStreamID, timestampDelta } = message;
     switch (messageTypeID) {
+      case 0x01:
+        break;
       // 20
       case 0x14:
         const cmd = AMF.decodeAmf0Cmd(rtmpBody);
