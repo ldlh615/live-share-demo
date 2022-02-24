@@ -16,7 +16,7 @@ const tcpServer = Net.createServer((socket) => {
 
     // 处理非benlei协议的
     if (protocol.indexOf("BENLEI/1.0") < 0) {
-      socket.write(`BENLEI/1.0 fail\nfuck off`);
+      socket.write(`BENLEI/1.0 FAIL\n\nfuck off\n`);
       socket.end();
       return;
     }
@@ -25,7 +25,7 @@ const tcpServer = Net.createServer((socket) => {
     switch (type) {
       // ping一下
       case "PING": {
-        socket.write(`BENLEI/1.0 ANS\n\nHi iam Benlei\n`);
+        socket.write(`BENLEI/1.0 SUCCESS\n\nHi iam Benlei\n`);
         socket.end();
         break;
       }
@@ -33,19 +33,20 @@ const tcpServer = Net.createServer((socket) => {
       case "JOIN": {
         const socketId = Date.now();
         socketMap[socketId] = socket;
-        socket.write(`BENLEI/1.0 ANS\n\njoin success\n`);
-        console.log(socketMap);
+        socket.write(`BENLEI/1.0 SUCCESS\n\njoin success\n`);
+        // console.log(socketMap);
         break;
       }
       // 广播
       case "BOARDCAST": {
         for (let s of Object.values(socketMap)) {
-          s.write(`BENLEI/1.0 ANS\n\n${body[0]}\n`);
+          s.write(`BENLEI/1.0 SUCCESS\n\n${body[0]}\n`);
         }
-        socket.write(`BENLEI/1.0 ANS\n\nboardcast success\n`);
+        socket.write(`BENLEI/1.0 SUCCESS\n\nboardcast success\n`);
         break;
       }
       default: {
+        socket.write(`BENLEI/1.0 SUCCESS\n\nThis Is Benlei Protocol\n`);
         socket.end();
       }
     }
