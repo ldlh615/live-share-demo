@@ -369,12 +369,106 @@ class Session {
     const { timestamp, messageLength, messageTypeID, messageStreamID, timestampDelta } = message;
     switch (messageTypeID) {
       case 0x01:
+        this.inChunkSize = rtmpBody.readUInt32BE(0);
+        //console.log('[rtmp handleRtmpMessage] Set In chunkSize:' + this.inChunkSize);
         break;
-      // 20
+
+      case 0x04:
+        var userControlMessage = this.parseUserControlMessage(rtmpBody);
+        if (userControlMessage.eventType === 3) {
+          var streamID =
+            (userControlMessage.eventData[0] << 24) +
+            (userControlMessage.eventData[1] << 16) +
+            (userControlMessage.eventData[2] << 8) +
+            userControlMessage.eventData[3];
+          var bufferLength =
+            (userControlMessage.eventData[4] << 24) +
+            (userControlMessage.eventData[5] << 16) +
+            (userControlMessage.eventData[6] << 8) +
+            userControlMessage.eventData[7];
+          // //console.log("[rtmp handleRtmpMessage] SetBufferLength: streamID=" + streamID + " bufferLength=" + bufferLength);
+        } else if (userControlMessage.eventType === 7) {
+          var timestamp =
+            (userControlMessage.eventData[0] << 24) +
+            (userControlMessage.eventData[1] << 16) +
+            (userControlMessage.eventData[2] << 8) +
+            userControlMessage.eventData[3];
+          ////console.log("[rtmp handleRtmpMessage] PingResponse: timestamp=" + timestamp);
+        } else {
+          // //console.log("[rtmp handleRtmpMessage] User Control Message");
+          //console.log(userControlMessage);
+        }
+        break;
+
+      /*
+       * 视频/音频数据(Audio Data & Video Data)
+       */
+      case 0x08:
+        // 音频数据(Audio Data)
+        ////console.log(rtmpHeader);
+        // //console.log('Audio Data: '+rtmpBody.length);\
+        this.parseAudioMessage(rtmpHeader, rtmpBody);
+        break;
+      case 0x09:
+        // 视频数据(Video Data)
+        // //console.log(rtmpHeader);
+        // //console.log('Video Data: '+rtmpBody.length);
+        this.parseVideoMessage(rtmpHeader, rtmpBody);
+        break;
+
+      /*
+       * 共享消息(Shared Object Message)
+       * 含义：表示一个Flash类型的对象，由键值对的集合组成，用于多客户端，多实例时使用
+       *
+       * MessageTypeID = 19(0x13) 或 16(0x10)
+       *         当信息使用AMF0编码时，MessageTypeID=19(0x13)
+       *         当信息使用AMF3编码时，MessageTypeID=16(0x10)
+       */
+      case 0x10:
+      case 0x13:
+        // do nothing
+        break;
+
+      /*
+       * 命令消息(Command Message)
+       * 含义：在客户端盒服务器间传递的在对端执行某些操作的命令消息
+       *
+       * MessageTypeID = 17(0x11) 或 20(0x14)
+       *         当信息使用AMF0编码时，MessageTypeID=20(0x14)
+       *         当信息使用AMF3编码时，MessageTypeID=17(0x11)
+       *
+       * 常见的Command Message含义
+       *        connect: 连接对端，对端如果同意连接的话会记录发送端信息并返回连接成功消息
+       *        publish: 开始向对方推流，接受端接到命令后准备好接受对端发送的流信息
+       */
+      case 0x11:
+        //AMF3 encoded Command Message
+        var cmd = AMF.decodeAmf0Cmd(rtmpBody.slice(1));
+        this.handleAMFCommandMessage(cmd, this);
+        break;
       case 0x14:
-        const cmd = AMF.decodeAmf0Cmd(rtmpBody);
-        Logger.log("cmd", cmd);
-        this.handleAMFCommandMessage(cmd);
+        //AMF0 encoded Command Message
+        var cmd = AMF.decodeAmf0Cmd(rtmpBody);
+        this.handleAMFCommandMessage(cmd, this);
+        break;
+
+      /*
+       * 数据消息(Data Message)。
+       * 含义：传递一些元数据（MetaData，比如视频名，分辨率等等）或者用户自定义的一些消息。
+       *
+       * MessageTypeID = 15(0x0F) 或 18(0x12)
+       *         当信息使用AMF0编码时，MessageTypeID=18(0x14)
+       *         当信息使用AMF3编码时，MessageTypeID=15(0x0F)
+       */
+      case 0x0f:
+        //AMF3 encoded Data Message
+        var cmd = AMF.decodeAmf0Cmd(rtmpBody.slice(1));
+        this.handleAMFDataMessage(cmd, this);
+        break;
+      case 0x12:
+        //AMF0 encoded Data Message
+        var cmd = AMF.decodeAmf0Cmd(rtmpBody);
+        this.handleAMFDataMessage(cmd, this);
         break;
     }
   }
